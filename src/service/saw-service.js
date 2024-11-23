@@ -65,7 +65,6 @@ export const getRecommendations = async () => {
     harga: 0.3, // Harga memiliki bobot 30%
     tahun: 0.2, // Tahun memiliki bobot 20%
     jarakTempuh: 0.3, // Jarak tempuh memiliki bobot 30%
-    efisiensiBahanBakar: 0.2, // Efisiensi bahan bakar memiliki bobot 20%
   };
 
   // Hitung rekomendasi menggunakan metode SAW
