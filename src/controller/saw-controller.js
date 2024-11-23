@@ -27,5 +27,5 @@ export const getCarRecommendations = async (req, res) => {
       success: false,
       message: error.message || "Terjadi kesalahan saat mengambil rekomendasi.",
     });
-  }
+  } 
 };

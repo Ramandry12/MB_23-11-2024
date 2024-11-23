@@ -22,7 +22,7 @@ model Car {
   id          Int      @id @default(autoincrement())
   nama        String   @db.Char(20)
   harga       Int      @db.Int
-  tahun       String   
+  tahun       DateTime  @db.Date   
   jarakTempuh Int      @db.Int
   merkId      Int
   merk        Merk     @relation(fields: [merkId], references: [id])
