@@ -29,6 +29,6 @@ publicRouter.post("/weight", weightController.createWeight);
 publicRouter.put("/weight/:id", weightController.updateWeight);
 publicRouter.delete("/weight/:id", weightController.deleteWeight);
 
-publicRouter.get("/recommendations", getCarRecommendations);
+publicRouter.post("/recommendations", getCarRecommendations);
 
 export { publicRouter };

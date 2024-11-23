@@ -1,33 +1,26 @@
 import { prismaClient } from "../app/database.js";
 
-// Normalisasi matriks
+// Fungsi untuk normalisasi matriks mobil
 const normalize = (cars) => {
   const maxValues = {
-    tahun: Math.max(...cars.map((car) => car.tahun)), // Maksimasi keuntungan
-    efisiensiBahanBakar: Math.max(
-      ...cars.map((car) => car.efisiensiBahanBakar)
-    ), // Maksimasi keuntungan
+    tahun: Math.max(...cars.map((car) => parseInt(car.tahun))), // Konversi string ke angka
   };
 
   const minValues = {
-    harga: Math.min(...cars.map((car) => car.harga)), // Minimasi biaya
-    jarakTempuh: Math.min(...cars.map((car) => car.jarakTempuh)), // Minimasi biaya
+    harga: Math.min(...cars.map((car) => car.harga)),
+    jarakTempuh: Math.min(...cars.map((car) => car.jarakTempuh)),
   };
 
   return cars.map((car) => ({
     id: car.id,
     nama: car.nama,
-    // Gunakan nilai minimum untuk normalisasi biaya
-    harga: minValues.harga / car.harga, // Minimasi biaya
-    jarakTempuh: minValues.jarakTempuh / car.jarakTempuh, // Minimasi biaya
-    // Gunakan nilai maksimum untuk normalisasi keuntungan
-    tahun: car.tahun / maxValues.tahun, // Maksimasi keuntungan
-    efisiensiBahanBakar:
-      car.efisiensiBahanBakar / maxValues.efisiensiBahanBakar, // Maksimasi keuntungan
+    harga: minValues.harga / car.harga, // Normalisasi biaya
+    jarakTempuh: minValues.jarakTempuh / car.jarakTempuh, // Normalisasi biaya
+    tahun: parseInt(car.tahun) / maxValues.tahun, // Normalisasi keuntungan
   }));
 };
 
-// Fungsi untuk menghitung nilai SAW
+// Fungsi untuk menghitung skor SAW
 const calculateSAW = (cars, weights) => {
   const normalizedCars = normalize(cars);
 
@@ -36,37 +29,85 @@ const calculateSAW = (cars, weights) => {
       const score =
         car.harga * weights.harga +
         car.tahun * weights.tahun +
-        car.jarakTempuh * weights.jarakTempuh +
-        car.efisiensiBahanBakar * weights.efisiensiBahanBakar;
+        car.jarakTempuh * weights.jarakTempuh;
 
-      return {
-        ...car,
-        score,
-      };
+      return { ...car, score };
     })
-    .sort((a, b) => b.score - a.score); // Mengurutkan berdasarkan skor tertinggi
+    .sort((a, b) => b.score - a.score); // Urutkan berdasarkan skor tertinggi
 };
 
-// Service untuk mendapatkan rekomendasi mobil berdasarkan SAW
-export const getRecommendations = async () => {
-  // Ambil semua data mobil dari database
-  const cars = await prismaClient.car.findMany();
-  const weight = await prismaClient.weight.findMany({
-    select: {
-      harga: true,
-      tahun: true,
-      jarakTempuh: true,
-      efisiensiBahanBakar: true,
-    },
-  });
+// Fungsi untuk normalisasi bobot
+const normalizeWeights = (weights) => {
+  const totalWeight = weights.harga + weights.tahun + weights.jarakTempuh;
 
-  // Bobot untuk setiap kriteria (misalnya)
-  const weights = {
-    harga: 0.3, // Harga memiliki bobot 30%
-    tahun: 0.2, // Tahun memiliki bobot 20%
-    jarakTempuh: 0.3, // Jarak tempuh memiliki bobot 30%
+  if (totalWeight === 0) {
+    throw new Error("Total bobot tidak boleh nol.");
+  }
+
+  return {
+    harga: weights.harga / totalWeight,
+    tahun: weights.tahun / totalWeight,
+    jarakTempuh: weights.jarakTempuh / totalWeight,
   };
+};
 
-  // Hitung rekomendasi menggunakan metode SAW
-  return calculateSAW(cars, weights);
+// Fungsi utama untuk mendapatkan rekomendasi mobil
+export const getRecommendations = async (filters) => {
+  try {
+    const { minHarga, maxHarga, tahun, jarakTempuh } = filters;
+
+    // Validasi input: jika semua filter kosong, berikan error
+    if (
+      minHarga === undefined &&
+      maxHarga === undefined &&
+      tahun === undefined &&
+      jarakTempuh === undefined
+    ) {
+      throw new Error(
+        "Harap masukkan minimal satu filter untuk mendapatkan rekomendasi dari kami."
+      );
+    }
+
+    const whereCondition = {};
+    if (minHarga !== undefined) whereCondition.harga = { ...whereCondition.harga, gte: minHarga };
+    if (maxHarga !== undefined) whereCondition.harga = { ...whereCondition.harga, lte: maxHarga };
+    if (tahun !== undefined) whereCondition.tahun = { contains: tahun }; // Filter berdasarkan substring tahun
+    if (jarakTempuh !== undefined) whereCondition.jarakTempuh = { equals: jarakTempuh };
+
+    console.log("Kondisi filter:", whereCondition);
+
+    const cars = await prismaClient.car.findMany({ where: whereCondition });
+    console.log("Mobil yang ditemukan dari database:", cars);
+
+    if (cars.length === 0) {
+      throw new Error(
+        "Tidak ada mobil yang sesuai dengan filter yang diberikan. Silakan ubah filter Anda dan coba lagi."
+      );
+    }
+
+    const weightData = await prismaClient.weight.findMany({
+      select: { harga: true, tahun: true, jarakTempuh: true },
+    });
+
+    if (weightData.length === 0) {
+      throw new Error("Data bobot tidak ditemukan di database. Silakan hubungi administrator.");
+    }
+
+    const totalWeights = weightData.reduce(
+      (acc, curr) => ({
+        harga: acc.harga + (curr.harga || 0),
+        tahun: acc.tahun + (curr.tahun || 0),
+        jarakTempuh: acc.jarakTempuh + (curr.jarakTempuh || 0),
+      }),
+      { harga: 0, tahun: 0, jarakTempuh: 0 }
+    );
+
+    const normalizedWeights = normalizeWeights(totalWeights);
+    return calculateSAW(cars, normalizedWeights);
+  } catch (error) {
+    console.error("Error pada getRecommendations:", error.message);
+
+    // Mengembalikan pesan kesalahan dari throw yang telah ditentukan sebelumnya
+    throw new Error(error.message);
+  }
 };
